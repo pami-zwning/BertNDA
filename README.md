@@ -1,7 +1,7 @@
 ## BertNDA
 [BertNDA](https://ieeexplore.ieee.org/document/10239308): A model predicting ncRNA and disease trinary associations based on Multi-scale feature Fusion and Graph-Bert
  <!-- <br> -->
-[Zhiwei Ning](https://scholar.google.com/citations?user=bGLASH0AAAAJ&hl=zh-CN), [Jinyang Wu](), [Yidong Ding](), [Qinke Peng](), [Laiyi Fu](). 
+[Zhiwei Ning](https://scholar.google.com/citations?user=bGLASH0AAAAJ&hl=zh-CN), [Jinyang Wu](), [Yidong Ding](), [Ying Wang](), [Qinke Peng](), [Laiyi Fu](). 
 <!-- <br> -->
 
 ![BertNDA](/imgs/Method.svg)
