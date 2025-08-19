@@ -1,5 +1,5 @@
 ## BertNDA
-BertNDA: A model predicting ncRNA and disease trinary associations based on Multi-scale feature Fusion and Graph-Bert
+[BertNDA](https://ieeexplore.ieee.org/document/10239308): A model predicting ncRNA and disease trinary associations based on Multi-scale feature Fusion and Graph-Bert
  
 ![BertNDA](/imgs/Method.svg)
 
