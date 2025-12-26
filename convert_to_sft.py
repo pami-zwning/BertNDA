@@ -1,13 +1,15 @@
 import json
 import os
 import re
+from datetime import datetime
 
 # 配置路径
 INPUT_FILE = "dataset_output_v1/dataset.json"
-OUTPUT_FILE = "sft_dataset.json"
-# 假设当前工作目录是 /workspace，如果图片路径需要绝对路径，这里配置前缀
-# 如果你的训练代码需要绝对路径，请修改这里
-WORKSPACE_ROOT = os.path.abspath(".") 
+# 使用 os.getcwd() 获取当前工作目录
+WORKSPACE_ROOT = os.getcwd()
+TODAY_DATE = datetime.now().strftime("%Y%m%d")
+
+OUTPUT_FILE = f"sft_dataset_{TODAY_DATE}.jsonl"
 
 SYSTEM_PROMPT = "You are an AI assistant specialized in visual analysis and chart interpretation. You have access to a tool named 'draw_line' to perform precise measurements."
 
@@ -41,7 +43,7 @@ def generate_cot_and_tool(item, question_text):
         "name": "draw_line",
         "arguments": {
             "coords": coords,
-            "image_index": 0 # 通常 0 代表第一张图
+            "image_index": 1 # 通常 1 代表第一张图
         }
     }
     
@@ -55,82 +57,70 @@ def convert_to_sft():
     with open(INPUT_FILE, 'r') as f:
         raw_data = json.load(f)
 
-    sft_data = []
+    # 修改为写入 jsonl
+    with open(OUTPUT_FILE, 'w') as f_out:
+        for item in raw_data:
+            # 1. 获取基础信息
+            user_input_full = item['conversations'][0]['value'] 
+            gpt_response = item['conversations'][1]['value']
+            
+            # 分离出纯文本问题 (去掉 <image>\n) 用于 CoT 生成
+            question_text = user_input_full.replace("<image>\n", "").strip()
+            
+            # 提取答案字母
+            final_answer = extract_answer_letter(gpt_response)
+            
+            # 生成 CoT 和 Tool Call
+            thinking_part, tool_json = generate_cot_and_tool(item, question_text)
+            
+            # 2. 构建 Messages
+            messages = [
+                # System Message
+                {
+                    "role": "system", 
+                    "content": SYSTEM_PROMPT
+                },
+                # User Question
+                {
+                    "role": "user", 
+                    "content": user_input_full
+                },
+                # Assistant Step 1: Thinking + Tool Call
+                {
+                    "role": "assistant", 
+                    "content": f"{thinking_part}\n<tool_call>\n{tool_json}\n</tool_call>"
+                },
+                # User Tool Response (Simulated)
+                {
+                    "role": "user", 
+                    "content": "<tool_response>\nAuxiliary line drawn successfully.</tool_response>"
+                },
+                # Assistant Step 2: Final Conclusion
+                {
+                    "role": "assistant", 
+                    "content": (
+                        f"<thinking>\n"
+                        f"**Conclusion:** The visual evidence, enhanced by the auxiliary line, clearly points to the answer. "
+                        f"Checking the options provided, the value corresponds to option {final_answer}.\n"
+                        f"</thinking>\n"
+                        f"<answer>\n{final_answer}\n</answer>"
+                    )
+                }
+            ]
 
-    for item in raw_data:
-        # 1. 获取基础信息
-        # 原始数据中 conversations[0] 是 user，conversations[1] 是 gpt
-        user_input_full = item['conversations'][0]['value'] # 包含 <image>\nQuestion...
-        gpt_response = item['conversations'][1]['value']
-        
-        # 分离出纯文本问题 (去掉 <image>\n) 用于 CoT 生成
-        question_text = user_input_full.replace("<image>\n", "").strip()
-        
-        # 提取答案字母
-        final_answer = extract_answer_letter(gpt_response)
-        
-        # 生成 CoT 和 Tool Call
-        thinking_part, tool_json = generate_cot_and_tool(item, question_text)
-        
-        # 2. 构建 Messages
-        messages = [
-            # System Message
-            {
-                "role": "system", 
-                "content": SYSTEM_PROMPT
-            },
-            # User Question
-            {
-                "role": "user", 
-                "content": user_input_full
-            },
-            # Assistant Step 1: Thinking + Tool Call
-            {
-                "role": "assistant", 
-                "content": f"{thinking_part}\n<tool_call>\n{tool_json}\n</tool_call>"
-            },
-            # User Tool Response (Simulated)
-            {
-                "role": "user", 
-                "content": "<tool_response>\nAuxiliary line drawn successfully.</tool_response>"
-            },
-            # Assistant Step 2: Final Conclusion
-            {
-                "role": "assistant", 
-                "content": (
-                    f"<thinking>\n"
-                    f"**Conclusion:** The visual evidence, enhanced by the auxiliary line, clearly points to the answer. "
-                    f"Checking the options provided, the value corresponds to option {final_answer}.\n"
-                    f"</thinking>\n"
-                    f"<answer>\n{final_answer}\n</answer>"
-                )
+            # 3. 构建 Image Path (使用第一张无红线的原图)
+            img_filename = item['image'][0] 
+            img_abs_path = os.path.join(WORKSPACE_ROOT, "dataset_output_v1", "images", img_filename)
+
+            # 4. 组合最终 Entry
+            entry = {
+                "messages": messages,
+                "images": [img_abs_path]
             }
-        ]
+            
+            f_out.write(json.dumps(entry) + '\n')
 
-        # 3. 构建 Image Path (使用第一张无红线的原图)
-        # 原始数据 image 字段是 list: [原图, 红线图]
-        # 训练时我们输入原图，模型预测红线位置
-        img_filename = item['image'][0] 
-        img_abs_path = os.path.join(WORKSPACE_ROOT, "dataset_output_v1", "images", img_filename)
-
-        # 4. 组合最终 Entry
-        entry = {
-            "messages": messages,
-            "images": [img_abs_path]
-        }
-        
-        sft_data.append(entry)
-
-    # 保存
-    with open(OUTPUT_FILE, 'w') as f:
-        # 如果需要 jsonl 格式 (每行一个json)
-        # for entry in sft_data:
-        #     f.write(json.dumps(entry) + '\n')
-        
-        # 如果需要标准 json list 格式
-        json.dump(sft_data, f, indent=2)
-
-    print(f"Successfully converted {len(sft_data)} samples to {OUTPUT_FILE}")
+    print(f"Successfully converted {len(raw_data)} samples to {OUTPUT_FILE}")
 
 if __name__ == "__main__":
     convert_to_sft()
